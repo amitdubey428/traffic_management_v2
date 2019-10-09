@@ -13,12 +13,10 @@ for each four lane
 import cv2
 import numpy as np
 from sklearn.externals import joblib
-from threading import *
+import threading
 import time
 import yolo_main
 from flask import Flask, render_template, Response
-import boltiot
-from boltiot import Bolt
 
 app = Flask(__name__)
 
@@ -27,22 +25,37 @@ def index():
     return render_template('index.html')
 
 # importing linearRegression model pickle file#
-model = joblib.load("model.cpickle")
+model = joblib.load("timePredictionModel.cpickle")
 
 # Calculating the frame number from the given time as an argument#
 def calcFrame(x, y):
     frame_time = int((x * 60 + y) * 35)
     return frame_time
 
-
-def process(frame):
+# congestionTest = 0
+# x = 2
+# i=j=k=l=0
+def process(frame,lane):
+    # global x
+    # if lane == 1:
+    #     if x == 2:
+    #         x=1
+    #     else:
+    #         x=2
     vidClone = frame.copy()
+    #cv2.imwrite('image.png',vidClone)
+    # filepath = 'TrafficImages/lane'+str(lane)+'/image'+str(x)+'.png'
+    
     print("entered for processing")
     #Finding the roi#
     roi=np.zeros((frame.shape[0],frame.shape[1]),"uint8")
-    cv2.rectangle(roi, (62, 60), (242, 180), 255, -1)
+    cv2.rectangle(roi, (65, 60), (241, 187), 255, -1)
     frame=cv2.bitwise_and(frame,frame,mask=roi)
-
+    #Congestion detection logic
+    # cv2.imwrite(filepath,frame)
+    # global congestionTest
+    # congestionTest=frame.copy()
+    # congestionTest=cv2.cvtColor(congestionTest,cv2.COLOR_BGR2GRAY)
     #Yolo Logic#
     num=yolo_main.detect(frame)
     print("detected vehicles",num)
@@ -50,10 +63,9 @@ def process(frame):
     arr=arr.reshape(-1,1)
 
     #Obtaining the time#
-    time = int(model.predict(arr)*0.58)
-    if time<30:
-        time=30
-        print("time not predicted default has been set")
+    time = int(model.predict(arr)*1.24)
+    if(time<10):
+        time=10
     print("predicted time is",time)
 
     
@@ -64,22 +76,21 @@ def process(frame):
 
 def get_frame():
 
-    api_key = "xxxxxxx"
-    device_id  = "xxxxxxx"
-    mybolt = Bolt(api_key, device_id)
-    response = mybolt.isOnline()
-    print(response)
-
-    refIm = cv2.imread("refFrame.jpg")
-    vid1 = cv2.VideoCapture('latestData.mp4')
-    vid2 = cv2.VideoCapture('latestData.mp4')
-    vid3 = cv2.VideoCapture('latestData.mp4')
-    vid4 = cv2.VideoCapture('latestData.mp4')
-    temp = np.zeros(refIm.shape,"uint8")
-    timer = temp.copy()
+    # global i,j,k,l
+    vid1 = cv2.VideoCapture('TrafficDataSet.mp4')
+    vid2 = cv2.VideoCapture('TrafficDataSet.mp4')
+    vid3 = cv2.VideoCapture('TrafficDataSet.mp4')
+    vid4 = cv2.VideoCapture('TrafficDataSet.mp4')
+    #Congestion detection logic
+    # flag1=[0,0]
+    # flag2=[0,0]
+    # flag3=[0,0]
+    # flag4=[0,0]
+    _, frame1 = vid2.read()
+    temp = np.zeros(frame1.shape,"uint8")
+    
+    li=[[2,37],[2,52],[4,1],[8,51],[10,8],[11,8],[12,21],[14,6],[15,34]]
     index=0
-    li=[[5,49],[7,32],[9,4],[10,43],[12,14],[14,3],[15,46],[2,20],[17,17]]
-
     red_img=cv2.imread("traffic_lights/red.png")
     yellow_img=cv2.imread("traffic_lights/yellow.png")
     green_img=cv2.imread("traffic_lights/green.png")
@@ -122,29 +133,29 @@ def get_frame():
 
         index=(index+1)%9
         # display window. fWin is the final Video#
-        st0 = np.hstack((temp, frame1, temp))
-        st1 = np.hstack((frame4, timer, frame2))
-        st2 = np.hstack((temp, frame3, temp))
-        fWin = np.vstack((st0, st1, st2))
+        # st0 = np.hstack((temp, frame1, temp))
+        # st1 = np.hstack((frame4, temp, frame2))
+        # st2 = np.hstack((temp, frame3, temp))
+        # fWin = np.vstack((st0, st1, st2))
 
         #------------DEBUG1-----------#
-        print(temp.shape,st0.shape,red_img.shape)
+        #print(temp.shape,st0.shape,red_img.shape)
         next_predected_time = 0
         if next_predected_time == 0:
-            predected_time = int(process(frame1))
+            predected_time = int(process(frame1,1))
         else:
             predected_time = int(next_predected_time)
 
         #print("predicted time is",predected_time)
         t0 = time.clock()
         t0 = time.time()
-        mybolt.digitalWrite(0,'LOW')
+
         while (time.time()-t0<=predected_time):
             rem_time=predected_time-(time.time()-t0)
             print("frame 1")
-            ret1, frame1 = vid1.read()
+            _, frame1 = vid1.read()
             st0 = np.hstack((temp, frame1, temp))
-            st1 = np.hstack((frame4, timer, frame2))
+            st1 = np.hstack((frame4, temp, frame2))
             st2 = np.hstack((temp, frame3, temp))
 
             if rem_time<7:
@@ -172,13 +183,30 @@ def get_frame():
             
             if int(rem_time)==5:
                 print("processing frame 2")
-                next_predected_time=(process(frame2))
+                next_predected_time=(process(frame2,2))
             print(rem_time)
+            #Congestion detection logic
+            #____CONGESTION CONTROL LOGIC____
+            # if int(rem_time)==4:
+            #     roi=np.zeros((frame1.shape[0],frame1.shape[1]),"uint8")
+            #     cv2.rectangle(roi, (65, 60), (241, 187), 255, -1)
+            #     frame1=cv2.bitwise_and(frame1,frame1,mask=roi) 
+            #     print("Checking for congestion")
+            #     filepath = 'TrafficImages/lane1/congestionCheck.png'
+            #     cv2.imwrite(filepath,frame1)
+            #     congestionCheck=frame1.copy()
+            #     congestionCheck=cv2.cvtColor(congestionCheck,cv2.COLOR_BGR2GRAY)
+            #     if np.mean(cv2.bitwise_xor(congestionCheck,congestionTest)<4):
+            #         flag1[i]=1
+            #         i=(i+1)%2
+            #     if flag1[0]==flag1[1] and flag1[1]==1:
+            #         print("Unwanted Congestion detected")
+            #         pass
+
 
         predected_time=next_predected_time
 
-        mybolt.digitalWrite(0,'HIGH')
-        mybolt.digitalWrite(1,'LOW')
+
         #For Frame2#
         t0 = time.clock()
         t0 = time.time()
@@ -188,7 +216,7 @@ def get_frame():
             print("frame 2")
             ret2, frame2 = vid2.read()
             st0 = np.hstack((temp, frame1, temp))
-            st1 = np.hstack((frame4, timer, frame2))
+            st1 = np.hstack((frame4, temp, frame2))
             st2 = np.hstack((temp, frame3, temp))
             
 
@@ -213,13 +241,29 @@ def get_frame():
             
             if int(rem_time) == 5:
                 print("processing frame3")
-                next_predected_time = (process(frame3))
+                next_predected_time = (process(frame3,3))
+            #Congestion detection logic
+            # if int(rem_time)==4:
+            #     roi=np.zeros((frame2.shape[0],frame2.shape[1]),"uint8")
+            #     cv2.rectangle(roi, (65, 60), (241, 187), 255, -1)
+            #     frame2=cv2.bitwise_and(frame2,frame2,mask=roi) 
+            #     print("Checking for congestion")
+            #     filepath = 'TrafficImages/lane2/congestionCheck.png'
+            #     cv2.imwrite(filepath,frame2)
+            #     congestionCheck=frame2.copy()
+            #     congestionCheck=cv2.cvtColor(congestionCheck,cv2.COLOR_BGR2GRAY)
+            #     if np.mean(cv2.bitwise_xor(congestionCheck,congestionTest)<4):
+            #         flag1[j]=1
+            #         j=(j+1)%2  
+            #     if flag2[0]==flag2[1] and flag2[1]==1:
+            #         print("Unwanted Congestion detected")
+            #         pass       
             print(rem_time)
+
 
         predected_time=next_predected_time
 
-        mybolt.digitalWrite(1,'HIGH')
-        mybolt.digitalWrite(2,'LOW')
+
         #For Frame3#
         t0 = time.clock()
         t0 = time.time()
@@ -230,7 +274,7 @@ def get_frame():
             print("frame 3")
             ret2, frame3 = vid3.read()
             st0 = np.hstack((temp, frame1, temp))
-            st1 = np.hstack((frame4, timer, frame2))
+            st1 = np.hstack((frame4, temp, frame2))
             st2 = np.hstack((temp, frame3, temp))
 
             if rem_time<7:
@@ -251,12 +295,28 @@ def get_frame():
             
             if int(rem_time) == 5:
                 print("processing frame4")
-                next_predected_time = process(frame4)
+                next_predected_time = process(frame4,4)
+            #Congestion detection logic
+            # if int(rem_time)==4:
+            #     roi=np.zeros((frame3.shape[0],frame3.shape[1]),"uint8")
+            #     cv2.rectangle(roi, (65, 60), (241, 187), 255, -1)
+            #     frame3=cv2.bitwise_and(frame3,frame3,mask=roi) 
+            #     print("Checking for congestion")
+            #     filepath = 'TrafficImages/lane3/congestionCheck.png'
+            #     cv2.imwrite(filepath,frame3)
+            #     congestionCheck=frame3.copy()
+            #     congestionCheck=cv2.cvtColor(congestionCheck,cv2.COLOR_BGR2GRAY)
+            #     if np.mean(cv2.bitwise_xor(congestionCheck,congestionTest)<4):
+            #         flag1[k]=1
+            #         k=(k+1)%2     
+            #     if flag3[0]==flag3[1] and flag3[1]==1:
+            #         print("Unwanted Congestion detected")
+            #         pass        
             print(rem_time)
 
+
         predected_time=next_predected_time
-        mybolt.digitalWrite(2,'HIGH')
-        mybolt.digitalWrite(3,'LOW')
+
         #For Frame4#
         t0 = time.clock()
         t0 = time.time()
@@ -266,7 +326,7 @@ def get_frame():
             print("frame 4")
             ret2, frame4 = vid4.read()
             st0 = np.hstack((temp, frame1, temp))
-            st1 = np.hstack((frame4, timer, frame2))
+            st1 = np.hstack((frame4, temp, frame2))
             st2 = np.hstack((temp, frame3, temp))
             if rem_time<7:
                 testing = np.hstack((red_img,red_img,red_img,yellow_img))
@@ -286,10 +346,25 @@ def get_frame():
             rem_time = predected_time - (time.time() - t0)
             if int(rem_time) == 5:
                 print("processing frame 1")
-                next_predected_time = process(frame1)
+                next_predected_time = process(frame1,1)
+            #Congestion detection logic
+            # if int(rem_time)==4:
+            #     roi=np.zeros((frame4.shape[0],frame4.shape[1]),"uint8")
+            #     cv2.rectangle(roi, (65, 60), (241, 187), 255, -1)
+            #     frame4=cv2.bitwise_and(frame4,frame4,mask=roi) 
+            #     print("Checking for congestion")
+            #     filepath = 'TrafficImages/lane4/congestionCheck.png'
+            #     cv2.imwrite(filepath,frame2)
+            #     congestionCheck=frame4.copy()
+            #     congestionCheck=cv2.cvtColor(congestionCheck,cv2.COLOR_BGR2GRAY)
+            #     if np.mean(cv2.bitwise_xor(congestionCheck,congestionTest)<4):
+            #         flag1[l]=1
+            #         l=(l+1)%2
+            #     if flag4[0]==flag4[1] and flag4[1]==1:
+            #         print("Unwanted Congestion detected")
+            #         pass
             print(rem_time)
-        mybolt.digitalWrite(3,'HIGH')
-        
+
 @app.route('/calc')
 def calc():
      return Response(get_frame(),mimetype='multipart/x-mixed-replace; boundary=frame')
